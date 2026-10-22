@@ -1,7 +1,7 @@
 # Ticketer — Card Client (mock)
 
-Mock socket client that plays the role of the **payment card** in a contactless
-payment ("tap to pay") process.
+Mock socket client that plays the role of the **fare payment card** in a contactless
+fare payment ("tap to pay") process.
 
 The card authenticates itself to the gate/terminal using a **challenge–response
 handshake over SSH-key cryptography**: it announces its public key, signs a
