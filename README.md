@@ -8,7 +8,7 @@ handshake over SSH-key cryptography**: it announces its public key, signs a
 random 16-byte nonce returned by the terminal, and receives back an `OK` / `FAIL`
 status.
 
-> This is the **client** half of the project. The terminal/gate server listens on `localhost:2137`.
+> This is the **client** half of the project. The (terminal/gate)[https://github.com/bgnacinski/conductor-ticketer] server listens on `localhost:2137`.
 
 ---
 
