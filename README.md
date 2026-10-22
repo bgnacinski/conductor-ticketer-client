@@ -98,11 +98,11 @@ Card                                        Terminal
  |                                              |
  |--- SSH public key (card_key.pub) ----------->|   authenticate the card
  |                                              |
- |<-- 16-byte random nonce (challenge) --------|   prove possession of the key
+ |<-- 16-byte random nonce (challenge) ---------|   prove possession of the key
  |                                              |
- |--- Ed25519 signature over the nonce ------->|   sign the challenge
+ |--- Ed25519 signature over the nonce -------->|   sign the challenge
  |                                              |
- |<-- "OK" / "FAIL" ---------------------------|   result
+ |<-- "OK" / "FAIL" ----------------------------|   result
 ```
 
 Steps in `main.py`:
