@@ -9,6 +9,10 @@ signature and validity window) and the card's public key algorithm, then sends a
 random 16-byte nonce that the card signs with its private key. The gate answers
 with an `OK` / `FAIL` status.
 
+The card key can be **Ed25519**, **ECDSA** (P-256/384/521) or **RSA** (≥ 2048
+bits); the client signs the challenge with whichever algorithm the loaded key
+uses.
+
 > This is the **client** half of the project. The [terminal/gate](https://github.com/bgnacinski/conductor-ticketer) server listens on `localhost:2137`.
 
 ---
@@ -53,9 +57,17 @@ every fresh clone must generate its own card key pair and certificate.
 # from the repository root (the client/ directory)
 mkdir -p crypto
 
-# Ed25519 key pair: private key -> crypto/card_key, public key -> crypto/card_key.pub
+# pick one:
+# Ed25519
 ssh-keygen -t ed25519 -f crypto/card_key -C "card@ticketer" -N ""
+# ECDSA P-256
+ssh-keygen -t ecdsa -b 256 -f crypto/card_key -C "card@ticketer" -N ""
+# RSA 2048
+ssh-keygen -t rsa -b 2048 -f crypto/card_key -C "card@ticketer" -N ""
 ```
+
+This creates the private key at `crypto/card_key` and the public key at
+`crypto/card_key.pub`.
 
 Keep the private key readable only by you:
 
@@ -74,9 +86,11 @@ cat crypto/card_key.pub               # stored public key
 The private key is stored in **OpenSSH format** and is loaded by the client with
 `serialization.load_ssh_private_key()`, so an OpenSSH-compatible key is required.
 
-> The client currently signs with **Ed25519** only — generate an Ed25519 key.
-> The gate also accepts RSA and ECDSA, but this client does not sign with them
-> yet (see [Accepted card key algorithms](#accepted-card-key-algorithms)).
+The client signs the challenge with the algorithm matching the loaded key:
+Ed25519 natively, ECDSA with SHA-256/384/512 chosen by curve size, and RSA with
+PKCS#1 v1.5 + SHA-512. ECDSA curves of 384 and 521 bits and larger RSA keys also
+work; keys weaker than the gate's minimums (RSA < 2048, ECDSA < 256) are rejected
+with `KEY_NOT_SECURE`.
 
 #### Sign the card key with the gate's CA
 
@@ -222,24 +236,27 @@ Steps in `main.py`:
 3. Receive the reply:
    * `INVALID_CERT` / `KEY_NOT_SECURE` — print the status and stop.
    * anything that is not a 16-byte nonce — raise an error.
-4. Sign the nonce with the private key and send the signature.
+4. Sign the nonce with `sign_nonce()` — which selects the signature algorithm
+   from the key type — and send the signature.
 5. Read and print the gate's response (`OK` / `FAIL`).
 
 ### Accepted card key algorithms
 
 The gate validates the certificate first, then enforces a minimum key strength.
 Weak or unsupported keys are rejected with `KEY_NOT_SECURE` before a challenge is
-issued.
+issued. The client picks the matching signature algorithm from the loaded key.
 
-| Algorithm | Requirement           | Gate | This client |
-| --------- | --------------------- | ---- | ----------- |
-| Ed25519   | any key               | ✅    | ✅           |
-| ECDSA     | curve size ≥ 256 bits | ✅    | ❌           |
-| RSA       | size ≥ 2048 bits      | ✅    | ❌           |
+| Algorithm | Requirement           | Gate | This client            |
+| --------- | --------------------- | ---- | ---------------------- |
+| Ed25519   | any key               | ✅    | ✅                      |
+| ECDSA     | curve size ≥ 256 bits | ✅    | ✅ P-256 / P-384 / P-521 |
+| RSA       | size ≥ 2048 bits      | ✅    | ✅                      |
 
-The client's `priv_key.sign(response)` call has no padding/hash arguments, which
-only works for Ed25519. An RSA or ECDSA card key loads successfully but raises a
-`TypeError` at signing time, so use an Ed25519 key with this client.
+The client signs with PKCS#1 v1.5 + SHA-512 for RSA, and with ECDSA/SHA-256,
+SHA-384 or SHA-512 for 256-, 384- and 521-bit curves respectively — matching what
+the gate verifies. Other key types (DSA, Ed448) are rejected by the gate as
+`KEY_NOT_SECURE`; if one ever reaches the signing step, the client raises
+`[!] Unsupported private key type: ...`.
 
 ---
 
@@ -254,7 +271,7 @@ only works for Ed25519. An RSA or ECDSA card key loads successfully but raises a
 | `[!] Status:  KEY_NOT_SECURE`                                 | The key algorithm is not accepted, or the key is too weak (RSA < 2048 bits, ECDSA < 256 bits).                        |
 | `[*] Status: FAIL`                                            | The certificate and key were accepted, but the nonce signature did not verify.                                        |
 | `Received challenge is not 16 bytes long`                     | The gate replied with something that is neither a 16-byte nonce nor a known status — check the gate log.              |
-| `TypeError: ...sign() missing ... positional argument(s)`     | A non-Ed25519 card key was generated. Recreate the key with `-t ed25519`.                                             |
+| `TypeError: [!] Unsupported private key type: ...`          | The loaded key type is not supported (DSA, Ed448, …). Regenerate it as Ed25519, ECDSA or RSA.                          |
 | `[!] Connection closed!`                                      | The gate dropped the connection, usually while parsing a malformed certificate.                                       |
 | `Permission denied` on `crypto/card_key`                      | Fix the mode with `chmod 600 crypto/card_key`.                                                                        |
 | `ValueError: Invalid key` / `not a private key`               | The key is not in OpenSSH format — regenerate it with `ssh-keygen`.                                                   |
